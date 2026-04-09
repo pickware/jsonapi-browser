@@ -1,0 +1,7 @@
+name = "jsonapi-browser"
+pages_build_output_dir = "."
+
+[env.production]
+routes = [
+  { pattern = "jsonapi-browser.pages.dev", custom_domain = false }
+]
