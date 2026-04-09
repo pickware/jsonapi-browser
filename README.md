@@ -17,5 +17,7 @@ Interactive single-page app to paste a [JSON:API](https://jsonapi.org/) document
 The app is hosted as a Cloudflare Page. Deployment is currently manual:
 
 ```sh
-CLOUDFLARE_ACCOUNT_ID=fa90455445de207a0edc6f417f372c60 npx wrangler pages deploy . --project-name jsonapi-browser
+npx wrangler pages deploy . --project-name jsonapi-browser
 ```
+
+Wrangler fragt interaktiv nach dem Account, falls mehrere verfügbar sind.
