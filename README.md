@@ -12,7 +12,7 @@ Interactive single-page app to paste a [JSON:API](https://jsonapi.org/) document
 - Stats bar showing primary, included, total resource counts and type breakdown
 - Example payload included for quick testing
 
-## Deploy
+## Deployment
 
 The app is hosted as a Cloudflare Page. Deployment is currently manual:
 
@@ -20,4 +20,4 @@ The app is hosted as a Cloudflare Page. Deployment is currently manual:
 npx wrangler pages deploy . --project-name jsonapi-browser
 ```
 
-Wrangler fragt interaktiv nach dem Account, falls mehrere verfügbar sind.
+Wrangler will prompt for the account interactively if multiple are available.
