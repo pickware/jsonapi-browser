@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSON:API Tree Browser</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-hover: #1c2129;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent-hover: #79c0ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --cyan: #56d4dd;
+    --radius: 6px;
+    --indent: 24px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  header h1 { font-size: 16px; font-weight: 600; }
+  header h1 span { color: var(--accent); }
+
+  .app {
+    display: flex;
+    height: calc(100vh - 49px);
+  }
+
+  /* Input Panel */
+  .input-panel {
+    width: 40%;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    transition: width 0.2s, min-width 0.2s;
+  }
+
+  .input-panel.collapsed {
+    width: 0;
+    min-width: 0;
+    overflow: hidden;
+    border-right: none;
+  }
+
+  .panel-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .panel-header span {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  textarea {
+    flex: 1;
+    background: var(--surface);
+    color: var(--text);
+    border: none;
+    padding: 14px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+  }
+
+  textarea::placeholder { color: var(--text-muted); }
+
+  .btn-group { display: flex; gap: 6px; }
+
+  button {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 5px 12px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+
+  button:hover { background: var(--surface-hover); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { background: var(--accent-hover); }
+
+  /* Tree Panel */
+  .tree-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .tree-toolbar {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .tree-content {
+    flex: 1;
+    overflow: auto;
+    padding: 8px 0;
+  }
+
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    gap: 8px;
+    text-align: center;
+    padding: 24px;
+    font-size: 14px;
+  }
+
+  .empty-state .icon { font-size: 40px; opacity: 0.4; }
+
+  /* Tree Node */
+  .tree-node {
+    user-select: text;
+  }
+
+  .tree-row {
+    display: flex;
+    align-items: center;
+    padding: 3px 12px 3px 0;
+    font-size: 13px;
+    line-height: 1.6;
+    border-radius: 3px;
+    gap: 2px;
+  }
+
+  .tree-row:hover {
+    background: var(--surface);
+  }
+
+  .tree-row.selected {
+    background: rgba(88, 166, 255, 0.1);
+  }
+
+  .tree-indent {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Vertical guide lines */
+  .tree-guide {
+    width: var(--indent);
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .tree-guide::before {
+    content: '';
+    position: absolute;
+    left: calc(var(--indent) / 2);
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .tree-toggle {
+    width: var(--indent);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 10px;
+    transition: transform 0.12s;
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 0;
+  }
+
+  .tree-toggle:not(.leaf):hover {
+    color: var(--text);
+  }
+
+  .tree-toggle.open {
+    transform: rotate(90deg);
+  }
+
+  .tree-toggle.leaf {
+    visibility: hidden;
+  }
+
+  .tree-icon {
+    margin-right: 6px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .tree-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Node type styles */
+  .node-resource .tree-icon { color: var(--accent); }
+  .node-resource .tree-label .type-name { color: var(--accent); font-weight: 600; }
+  .node-resource .tree-label .id-name { color: var(--text-muted); margin-left: 4px; }
+  .node-resource .tree-label .preview { color: var(--text-muted); margin-left: 8px; font-style: italic; }
+
+  .node-rel .tree-icon { color: var(--purple); }
+  .node-rel .tree-label { color: var(--purple); }
+  .node-rel .tree-label .count { color: var(--text-muted); margin-left: 4px; font-weight: normal; }
+
+  .node-attr .tree-icon { color: var(--text-muted); }
+  .node-attr .tree-label .attr-key { color: var(--text-muted); }
+  .node-attr .tree-label .attr-sep { color: var(--text-muted); margin: 0 4px; }
+  .node-attr .tree-label .v-string { color: var(--green); }
+  .node-attr .tree-label .v-number { color: var(--orange); }
+  .node-attr .tree-label .v-boolean { color: var(--red); }
+  .node-attr .tree-label .v-null { color: var(--text-muted); font-style: italic; }
+  .node-attr .tree-label .v-object { color: var(--cyan); }
+
+  .node-section .tree-icon { color: var(--orange); }
+  .node-section .tree-label { color: var(--orange); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
+
+  .node-ref .tree-icon { color: var(--text-muted); }
+  .node-ref .tree-label { color: var(--text-muted); font-style: italic; }
+
+  .node-root .tree-icon { color: var(--green); }
+  .node-root .tree-label { color: var(--green); font-weight: 600; }
+
+  .node-meta .tree-icon { color: var(--cyan); }
+  .node-meta .tree-label .attr-key { color: var(--cyan); }
+
+  /* Children container */
+  .tree-children {
+    display: none;
+  }
+
+  .tree-children.open {
+    display: block;
+  }
+
+  /* Error */
+  .error-box {
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.4);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin: 12px;
+    color: var(--red);
+    font-size: 13px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* Detail pane for selected node */
+  .detail-pane {
+    border-top: 1px solid var(--border);
+    max-height: 35%;
+    overflow: auto;
+    padding: 12px 16px;
+    flex-shrink: 0;
+    display: none;
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: var(--surface);
+  }
+
+  .detail-pane.visible {
+    display: block;
+  }
+
+  .detail-pane pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.5;
+  }
+
+  /* Stats bar */
+  .stats-bar {
+    display: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    gap: 16px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    font-size: 12px;
+    background: var(--surface);
+  }
+
+  .stats-bar.visible {
+    display: flex;
+  }
+
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .stat-value {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .stat-label {
+    color: var(--text-muted);
+  }
+
+  .stat-sep {
+    color: var(--border);
+    user-select: none;
+  }
+
+  .type-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-left: 4px;
+  }
+
+  .type-chip {
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--accent);
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>{<span>JSON:API</span>} Tree Browser</h1>
+</header>
+
+<div class="app">
+  <div class="input-panel" id="inputPanel">
+    <div class="panel-header">
+      <span>JSON:API Input</span>
+      <div class="btn-group">
+        <button onclick="loadExample()">Example</button>
+        <button class="primary" onclick="parseInput()">Parse</button>
+      </div>
+    </div>
+    <textarea id="jsonInput" placeholder='Paste your JSON:API document here...
+
+{
+  "data": { ... },
+  "included": [ ... ]
+}
+
+Cmd/Ctrl+Enter to parse'></textarea>
+  </div>
+
+  <div class="tree-panel">
+    <div class="tree-toolbar">
+      <button onclick="togglePanel()" id="toggleBtn">Hide Input</button>
+      <button onclick="expandAll()">Expand All</button>
+      <button onclick="collapseAll()">Collapse All</button>
+    </div>
+    <div class="stats-bar" id="statsBar"></div>
+    <div class="tree-content" id="treeContent">
+      <div class="empty-state">
+        <div class="icon">{ }</div>
+        <p>Paste a JSON:API document and click <strong>Parse</strong></p>
+      </div>
+    </div>
+    <div class="detail-pane" id="detailPane">
+      <pre id="detailContent"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  let doc = null;
+  let index = {};
+  let panelCollapsed = false;
+
+  // --- Index ---
+
+  function buildIndex(document) {
+    const idx = {};
+    function add(r) {
+      if (r && r.type && r.id) idx[r.type + ':' + r.id] = r;
+    }
+    const d = document.data;
+    if (Array.isArray(d)) d.forEach(add);
+    else if (d) add(d);
+    if (Array.isArray(document.included)) document.included.forEach(add);
+    return idx;
+  }
+
+  function lookup(type, id) {
+    return index[type + ':' + id] || null;
+  }
+
+  // --- Helpers ---
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function getPreview(r) {
+    if (!r.attributes) return '';
+    const a = r.attributes;
+    for (const k of ['title','name','label','subject','headline','firstName','username','email','body','text','description']) {
+      if (a[k] && typeof a[k] === 'string') {
+        return a[k].length > 60 ? a[k].slice(0, 60) + '...' : a[k];
+      }
+    }
+    for (const k of Object.keys(a)) {
+      if (typeof a[k] === 'string') {
+        return a[k].length > 60 ? a[k].slice(0, 60) + '...' : a[k];
+      }
+    }
+    return '';
+  }
+
+  function formatInlineValue(val) {
+    if (val === null || val === undefined) return '<span class="v-null">null</span>';
+    if (typeof val === 'string') return '<span class="v-string">"' + esc(val.length > 80 ? val.slice(0, 80) + '...' : val) + '"</span>';
+    if (typeof val === 'number') return '<span class="v-number">' + val + '</span>';
+    if (typeof val === 'boolean') return '<span class="v-boolean">' + val + '</span>';
+    if (Array.isArray(val)) return '<span class="v-object">[' + val.length + ' items]</span>';
+    if (typeof val === 'object') return '<span class="v-object">{' + Object.keys(val).length + ' keys}</span>';
+    return esc(String(val));
+  }
+
+  // --- Tree Building ---
+
+  // Track expanded paths to avoid circular refs
+  function resourcePath(type, id) { return type + ':' + id; }
+
+  function createRow(depth, nodeType, icon, labelHtml, isLeaf, onClick, onSelect) {
+    const row = document.createElement('div');
+    row.className = 'tree-row ' + nodeType;
+
+    let guides = '';
+    for (let i = 0; i < depth; i++) {
+      guides += '<span class="tree-guide"></span>';
+    }
+
+    row.innerHTML = guides +
+      '<span class="tree-toggle ' + (isLeaf ? 'leaf' : '') + '">&#9654;</span>' +
+      '<span class="tree-icon">' + icon + '</span>' +
+      '<span class="tree-label">' + labelHtml + '</span>';
+
+    return row;
+  }
+
+  function createTreeNode(depth, nodeType, icon, labelHtml, isLeaf, buildChildren, rawData) {
+    const node = document.createElement('div');
+    node.className = 'tree-node';
+
+    const row = createRow(depth, nodeType, icon, labelHtml, isLeaf);
+    node.appendChild(row);
+
+    let childrenEl = null;
+    let built = false;
+
+    if (!isLeaf) {
+      childrenEl = document.createElement('div');
+      childrenEl.className = 'tree-children';
+      node.appendChild(childrenEl);
+
+      const toggle = row.querySelector('.tree-toggle');
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = childrenEl.classList.contains('open');
+        if (!isOpen) {
+          if (!built) {
+            buildChildren(childrenEl, depth + 1);
+            built = true;
+          }
+          childrenEl.classList.add('open');
+          toggle.classList.add('open');
+        } else {
+          childrenEl.classList.remove('open');
+          toggle.classList.remove('open');
+        }
+      });
+    }
+
+    return node;
+  }
+
+  function buildResourceNode(resource, depth, visitedSet) {
+    const preview = getPreview(resource);
+    const label = '<span class="type-name">' + esc(resource.type) + '</span>' +
+      '<span class="id-name">#' + esc(resource.id) + '</span>' +
+      (preview ? '<span class="preview"> — ' + esc(preview) + '</span>' : '');
+
+    const hasAttrs = resource.attributes && Object.keys(resource.attributes).length > 0;
+    const hasRels = resource.relationships && Object.keys(resource.relationships).length > 0;
+    const hasMeta = resource.meta && Object.keys(resource.meta).length > 0;
+    const hasLinks = resource.links && Object.keys(resource.links).length > 0;
+    const isLeaf = !hasAttrs && !hasRels && !hasMeta && !hasLinks;
+
+    return createTreeNode(depth, 'node-resource', '&#9679;', label, isLeaf, (container, childDepth) => {
+      // Attributes
+      if (hasAttrs) {
+        const attrSection = createTreeNode(childDepth - 1, 'node-section', '&#9671;', 'Attributes', false, (c, d) => {
+          for (const [key, val] of Object.entries(resource.attributes)) {
+            const isComplex = val !== null && typeof val === 'object';
+            const attrLabel = '<span class="attr-key">' + esc(key) + '</span><span class="attr-sep">:</span> ' + formatInlineValue(val);
+
+            if (isComplex) {
+              c.appendChild(createTreeNode(d, 'node-attr', '&#8226;', attrLabel, false, (cc, dd) => {
+                buildValueTree(cc, dd, val);
+              }, val));
+            } else {
+              c.appendChild(createTreeNode(d, 'node-attr', '&#8226;', attrLabel, true, null, val));
+            }
+          }
+        }, resource.attributes);
+        // Auto-open attributes section
+        container.appendChild(attrSection);
+        const toggle = attrSection.querySelector('.tree-toggle');
+        const children = attrSection.querySelector('.tree-children');
+        toggle.click();
+      }
+
+      // Relationships
+      if (hasRels) {
+        const relSection = createTreeNode(childDepth - 1, 'node-section', '&#9671;', 'Relationships', false, (c, d) => {
+          for (const [relName, rel] of Object.entries(resource.relationships)) {
+            buildRelationshipNode(c, d, relName, rel, visitedSet);
+          }
+        }, resource.relationships);
+        container.appendChild(relSection);
+        // Auto-open relationships section
+        const toggle = relSection.querySelector('.tree-toggle');
+        toggle.click();
+      }
+
+      // Meta
+      if (hasMeta) {
+        const metaSection = createTreeNode(childDepth - 1, 'node-section', '&#9671;', 'Meta', false, (c, d) => {
+          for (const [key, val] of Object.entries(resource.meta)) {
+            const isComplex = val !== null && typeof val === 'object';
+            const attrLabel = '<span class="attr-key">' + esc(key) + '</span><span class="attr-sep">:</span> ' + formatInlineValue(val);
+            if (isComplex) {
+              c.appendChild(createTreeNode(d, 'node-meta', '&#8226;', attrLabel, false, (cc, dd) => {
+                buildValueTree(cc, dd, val);
+              }, val));
+            } else {
+              c.appendChild(createTreeNode(d, 'node-meta', '&#8226;', attrLabel, true, null, val));
+            }
+          }
+        }, resource.meta);
+        container.appendChild(metaSection);
+      }
+
+      // Links
+      if (hasLinks) {
+        const linksSection = createTreeNode(childDepth - 1, 'node-section', '&#9671;', 'Links', false, (c, d) => {
+          for (const [key, val] of Object.entries(resource.links)) {
+            const href = typeof val === 'string' ? val : (val && val.href ? val.href : JSON.stringify(val));
+            const lbl = '<span class="attr-key">' + esc(key) + '</span><span class="attr-sep">:</span> <span class="v-string">' + esc(href) + '</span>';
+            c.appendChild(createTreeNode(d, 'node-attr', '&#8226;', lbl, true, null, val));
+          }
+        }, resource.links);
+        container.appendChild(linksSection);
+      }
+    }, resource);
+  }
+
+  function buildRelationshipNode(container, depth, relName, rel, visitedSet) {
+    const data = rel.data;
+
+    if (data === null) {
+      const label = '<span>' + esc(relName) + '</span><span class="count"> — null</span>';
+      container.appendChild(createTreeNode(depth, 'node-rel', '&#9702;', label, true, null, rel));
+      return;
+    }
+
+    if (Array.isArray(data)) {
+      const label = '<span>' + esc(relName) + '</span><span class="count"> [' + data.length + ']</span>';
+      if (data.length === 0) {
+        container.appendChild(createTreeNode(depth, 'node-rel', '&#9702;', label, true, null, rel));
+        return;
+      }
+      container.appendChild(createTreeNode(depth, 'node-rel', '&#9702;', label, false, (c, d) => {
+        for (const ref of data) {
+          const resolved = lookup(ref.type, ref.id);
+          const path = resourcePath(ref.type, ref.id);
+          if (resolved && !visitedSet.has(path)) {
+            const newVisited = new Set(visitedSet);
+            newVisited.add(path);
+            c.appendChild(buildResourceNode(resolved, d, newVisited));
+          } else if (resolved) {
+            // Circular ref — show non-expandable reference
+            const lbl = '<span class="type-name">' + esc(ref.type) + '</span>' +
+              '<span class="id-name">#' + esc(ref.id) + '</span>' +
+              '<span class="preview"> (circular ref)</span>';
+            c.appendChild(createTreeNode(d, 'node-ref', '&#8634;', lbl, true, null, ref));
+          } else {
+            const lbl = esc(ref.type) + ' #' + esc(ref.id) + ' (not included)';
+            c.appendChild(createTreeNode(d, 'node-ref', '&#9675;', lbl, true, null, ref));
+          }
+        }
+      }, data));
+    } else if (data && data.type && data.id) {
+      const resolved = lookup(data.type, data.id);
+      const path = resourcePath(data.type, data.id);
+      const label = '<span>' + esc(relName) + '</span>';
+
+      container.appendChild(createTreeNode(depth, 'node-rel', '&#9702;', label, false, (c, d) => {
+        if (resolved && !visitedSet.has(path)) {
+          const newVisited = new Set(visitedSet);
+          newVisited.add(path);
+          c.appendChild(buildResourceNode(resolved, d, newVisited));
+        } else if (resolved) {
+          const lbl = '<span class="type-name">' + esc(data.type) + '</span>' +
+            '<span class="id-name">#' + esc(data.id) + '</span>' +
+            '<span class="preview"> (circular ref)</span>';
+          c.appendChild(createTreeNode(d, 'node-ref', '&#8634;', lbl, true, null, data));
+        } else {
+          const lbl = esc(data.type) + ' #' + esc(data.id) + ' (not included)';
+          c.appendChild(createTreeNode(d, 'node-ref', '&#9675;', lbl, true, null, data));
+        }
+      }, data));
+    }
+  }
+
+  function buildValueTree(container, depth, val) {
+    if (Array.isArray(val)) {
+      val.forEach((item, i) => {
+        const isComplex = item !== null && typeof item === 'object';
+        const lbl = '<span class="attr-key">[' + i + ']</span><span class="attr-sep">:</span> ' + formatInlineValue(item);
+        if (isComplex) {
+          container.appendChild(createTreeNode(depth, 'node-attr', '&#8226;', lbl, false, (c, d) => {
+            buildValueTree(c, d, item);
+          }, item));
+        } else {
+          container.appendChild(createTreeNode(depth, 'node-attr', '&#8226;', lbl, true, null, item));
+        }
+      });
+    } else if (val && typeof val === 'object') {
+      for (const [key, v] of Object.entries(val)) {
+        const isComplex = v !== null && typeof v === 'object';
+        const lbl = '<span class="attr-key">' + esc(key) + '</span><span class="attr-sep">:</span> ' + formatInlineValue(v);
+        if (isComplex) {
+          container.appendChild(createTreeNode(depth, 'node-attr', '&#8226;', lbl, false, (c, d) => {
+            buildValueTree(c, d, v);
+          }, v));
+        } else {
+          container.appendChild(createTreeNode(depth, 'node-attr', '&#8226;', lbl, true, null, v));
+        }
+      }
+    }
+  }
+
+  // --- Detail Pane ---
+
+  function showDetail(data) {
+    const pane = document.getElementById('detailPane');
+    const content = document.getElementById('detailContent');
+    content.textContent = JSON.stringify(data, null, 2);
+    pane.classList.add('visible');
+  }
+
+  // --- Main Render ---
+
+  function renderStats() {
+    const bar = document.getElementById('statsBar');
+    const primaryCount = Array.isArray(doc.data) ? doc.data.length : (doc.data ? 1 : 0);
+    const includedCount = Array.isArray(doc.included) ? doc.included.length : 0;
+    const totalCount = Object.keys(index).length;
+
+    // Count per type
+    const typeCounts = {};
+    for (const r of Object.values(index)) {
+      typeCounts[r.type] = (typeCounts[r.type] || 0) + 1;
+    }
+
+    let html = '<span class="stat"><span class="stat-value">' + primaryCount + '</span><span class="stat-label">primary</span></span>';
+    html += '<span class="stat-sep">|</span>';
+    html += '<span class="stat"><span class="stat-value">' + includedCount + '</span><span class="stat-label">included</span></span>';
+    html += '<span class="stat-sep">|</span>';
+    html += '<span class="stat"><span class="stat-value">' + totalCount + '</span><span class="stat-label">total</span></span>';
+    html += '<span class="stat-sep">|</span>';
+    html += '<span class="stat"><span class="stat-value">' + Object.keys(typeCounts).length + '</span><span class="stat-label">types</span></span>';
+    html += '<span class="stat-sep">|</span>';
+    html += '<div class="type-chips">';
+    for (const [type, count] of Object.entries(typeCounts).sort((a, b) => a[0].localeCompare(b[0]))) {
+      html += '<span class="type-chip">' + esc(type) + ' (' + count + ')</span>';
+    }
+    html += '</div>';
+
+    bar.innerHTML = html;
+    bar.classList.add('visible');
+  }
+
+  function renderTree() {
+    const content = document.getElementById('treeContent');
+    content.innerHTML = '';
+
+    if (!doc || !doc.data) {
+      document.getElementById('statsBar').classList.remove('visible');
+      content.innerHTML = '<div class="empty-state"><p>No primary data in document.</p></div>';
+      return;
+    }
+
+    renderStats();
+    const resources = Array.isArray(doc.data) ? doc.data : [doc.data];
+
+    if (resources.length === 1) {
+      // Single root — render directly
+      const r = resources[0];
+      const resolved = lookup(r.type, r.id) || r;
+      const visited = new Set([resourcePath(resolved.type, resolved.id)]);
+      const node = buildResourceNode(resolved, 0, visited);
+      content.appendChild(node);
+      // Auto-expand root
+      const toggle = node.querySelector('.tree-toggle');
+      if (toggle) toggle.click();
+    } else {
+      // Multiple roots — wrap in a "data" root node
+      const rootLabel = 'data<span class="count"> [' + resources.length + ' resources]</span>';
+      const rootNode = createTreeNode(0, 'node-root', '&#9733;', rootLabel, false, (c, d) => {
+        for (const r of resources) {
+          const resolved = lookup(r.type, r.id) || r;
+          const visited = new Set([resourcePath(resolved.type, resolved.id)]);
+          c.appendChild(buildResourceNode(resolved, d, visited));
+        }
+      });
+      content.appendChild(rootNode);
+      // Auto-expand root
+      const toggle = rootNode.querySelector('.tree-toggle');
+      if (toggle) toggle.click();
+    }
+
+    // Document-level meta
+    if (doc.meta && Object.keys(doc.meta).length > 0) {
+      const metaNode = createTreeNode(0, 'node-section', '&#9671;', 'Document Meta', false, (c, d) => {
+        for (const [key, val] of Object.entries(doc.meta)) {
+          const isComplex = val !== null && typeof val === 'object';
+          const lbl = '<span class="attr-key">' + esc(key) + '</span><span class="attr-sep">:</span> ' + formatInlineValue(val);
+          if (isComplex) {
+            c.appendChild(createTreeNode(d, 'node-meta', '&#8226;', lbl, false, (cc, dd) => buildValueTree(cc, dd, val), val));
+          } else {
+            c.appendChild(createTreeNode(d, 'node-meta', '&#8226;', lbl, true, null, val));
+          }
+        }
+      }, doc.meta);
+      content.appendChild(metaNode);
+    }
+
+    // Document-level links
+    if (doc.links && Object.keys(doc.links).length > 0) {
+      const linksNode = createTreeNode(0, 'node-section', '&#9671;', 'Document Links', false, (c, d) => {
+        for (const [key, val] of Object.entries(doc.links)) {
+          const href = typeof val === 'string' ? val : (val && val.href ? val.href : JSON.stringify(val));
+          const lbl = '<span class="attr-key">' + esc(key) + '</span><span class="attr-sep">:</span> <span class="v-string">' + esc(href) + '</span>';
+          c.appendChild(createTreeNode(d, 'node-attr', '&#8226;', lbl, true, null, val));
+        }
+      }, doc.links);
+      content.appendChild(linksNode);
+    }
+  }
+
+  // --- Expand / Collapse All ---
+
+  window.expandAll = function() {
+    const content = document.getElementById('treeContent');
+    // Click all closed toggles (up to a reasonable depth)
+    let safety = 0;
+    while (safety < 50) {
+      const closed = content.querySelectorAll('.tree-toggle:not(.open):not(.leaf)');
+      if (closed.length === 0) break;
+      closed.forEach(t => t.click());
+      safety++;
+    }
+  };
+
+  window.collapseAll = function() {
+    const content = document.getElementById('treeContent');
+    const open = content.querySelectorAll('.tree-toggle.open');
+    // Collapse from deepest first
+    const arr = Array.from(open).reverse();
+    arr.forEach(t => t.click());
+  };
+
+  // --- Panel Toggle ---
+
+  window.togglePanel = function() {
+    const panel = document.getElementById('inputPanel');
+    panelCollapsed = !panelCollapsed;
+    panel.classList.toggle('collapsed', panelCollapsed);
+    document.getElementById('toggleBtn').textContent = panelCollapsed ? 'Show Input' : 'Hide Input';
+  };
+
+  // --- Parse ---
+
+  window.parseInput = function() {
+    const raw = document.getElementById('jsonInput').value.trim();
+    if (!raw) return;
+
+    try {
+      doc = JSON.parse(raw);
+    } catch (e) {
+      document.getElementById('treeContent').innerHTML = '<div class="error-box">Invalid JSON: ' + esc(e.message) + '</div>';
+      return;
+    }
+
+    if (!doc || typeof doc !== 'object') {
+      document.getElementById('treeContent').innerHTML = '<div class="error-box">JSON:API document must be a JSON object.</div>';
+      return;
+    }
+
+    if (!doc.data && !doc.errors && !doc.meta) {
+      document.getElementById('treeContent').innerHTML = '<div class="error-box">Not a valid JSON:API document. Must contain "data", "errors", or "meta".</div>';
+      return;
+    }
+
+    document.getElementById('detailPane').classList.remove('visible');
+    index = buildIndex(doc);
+    renderTree();
+
+    if (!panelCollapsed) togglePanel();
+  };
+
+  // --- Example ---
+
+  window.loadExample = function() {
+    document.getElementById('jsonInput').value = JSON.stringify({
+      "data": [
+        {
+          "type": "articles", "id": "1",
+          "attributes": {
+            "title": "JSON:API paints my bikeshed!",
+            "body": "The shortest article. Ever.",
+            "created": "2015-05-22T14:56:29.000Z"
+          },
+          "relationships": {
+            "author": { "data": { "type": "people", "id": "9" } },
+            "comments": { "data": [{ "type": "comments", "id": "5" }, { "type": "comments", "id": "12" }] },
+            "tags": { "data": [{ "type": "tags", "id": "1" }, { "type": "tags", "id": "2" }] }
+          }
+        },
+        {
+          "type": "articles", "id": "2",
+          "attributes": {
+            "title": "Understanding Compound Documents",
+            "body": "Compound documents allow you to include related resources.",
+            "created": "2016-01-12T09:00:00.000Z"
+          },
+          "relationships": {
+            "author": { "data": { "type": "people", "id": "2" } },
+            "comments": { "data": [{ "type": "comments", "id": "44" }] },
+            "tags": { "data": [{ "type": "tags", "id": "2" }, { "type": "tags", "id": "3" }] }
+          }
+        }
+      ],
+      "included": [
+        { "type": "people", "id": "9", "attributes": { "firstName": "Dan", "lastName": "Gebhardt", "twitter": "dgeb" } },
+        { "type": "people", "id": "2", "attributes": { "firstName": "Yehuda", "lastName": "Katz", "twitter": "wycats" } },
+        { "type": "comments", "id": "5", "attributes": { "body": "First!" }, "relationships": { "author": { "data": { "type": "people", "id": "2" } } } },
+        { "type": "comments", "id": "12", "attributes": { "body": "I like XML better." }, "relationships": { "author": { "data": { "type": "people", "id": "9" } } } },
+        { "type": "comments", "id": "44", "attributes": { "body": "This cleared things up, thanks!" }, "relationships": { "author": { "data": { "type": "people", "id": "2" } } } },
+        { "type": "tags", "id": "1", "attributes": { "name": "json-api" } },
+        { "type": "tags", "id": "2", "attributes": { "name": "standards" } },
+        { "type": "tags", "id": "3", "attributes": { "name": "tutorial" } }
+      ]
+    }, null, 2);
+  };
+
+  // Keyboard shortcut
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      parseInput();
+    }
+  });
+})();
+</script>
+</body>
+</html>
