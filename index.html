@@ -372,6 +372,20 @@
     font-weight: 600;
     white-space: nowrap;
   }
+
+  .v-truncated {
+    cursor: pointer;
+  }
+
+  .v-truncated::after {
+    content: ' [+]';
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .v-truncated.v-expanded::after {
+    content: '';
+  }
 </style>
 </head>
 <body>
@@ -455,20 +469,27 @@ Cmd/Ctrl+Enter to parse'></textarea>
     const a = r.attributes;
     for (const k of ['title','name','label','subject','headline','firstName','username','email','body','text','description']) {
       if (a[k] && typeof a[k] === 'string') {
-        return a[k].length > 60 ? a[k].slice(0, 60) + '...' : a[k];
+        return a[k].length > 80 ? a[k].slice(0, 80) + '...' : a[k];
       }
     }
     for (const k of Object.keys(a)) {
       if (typeof a[k] === 'string') {
-        return a[k].length > 60 ? a[k].slice(0, 60) + '...' : a[k];
+        return a[k].length > 80 ? a[k].slice(0, 80) + '...' : a[k];
       }
     }
     return '';
   }
 
+  var TRUNCATE_AT = 300;
+
   function formatInlineValue(val) {
     if (val === null || val === undefined) return '<span class="v-null">null</span>';
-    if (typeof val === 'string') return '<span class="v-string">"' + esc(val.length > 80 ? val.slice(0, 80) + '...' : val) + '"</span>';
+    if (typeof val === 'string') {
+      if (val.length > TRUNCATE_AT) {
+        return '<span class="v-string v-truncated" data-full="' + esc(val) + '">"' + esc(val.slice(0, TRUNCATE_AT)) + '…"</span>';
+      }
+      return '<span class="v-string">"' + esc(val) + '"</span>';
+    }
     if (typeof val === 'number') return '<span class="v-number">' + val + '</span>';
     if (typeof val === 'boolean') return '<span class="v-boolean">' + val + '</span>';
     if (Array.isArray(val)) return '<span class="v-object">[' + val.length + ' items]</span>';
@@ -915,6 +936,20 @@ Cmd/Ctrl+Enter to parse'></textarea>
       ]
     }, null, 2);
   };
+
+  // Click to expand truncated values
+  document.getElementById('treeContent').addEventListener('click', (e) => {
+    const el = e.target.closest('.v-truncated');
+    if (!el) return;
+    e.stopPropagation();
+    if (el.classList.contains('v-expanded')) {
+      el.textContent = '"' + el.dataset.full.slice(0, TRUNCATE_AT) + '…"';
+      el.classList.remove('v-expanded');
+    } else {
+      el.textContent = '"' + el.dataset.full + '"';
+      el.classList.add('v-expanded');
+    }
+  });
 
   // Keyboard shortcut
   document.addEventListener('keydown', (e) => {
